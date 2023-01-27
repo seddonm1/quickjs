@@ -1,0 +1,20 @@
+[package]
+name = "quickjs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.68"
+wasi-common = "5.0.0"
+wasmtime = "5.0.0"
+wasmtime-wasi = "5.0.0"
+
+[dev-dependencies]
+clap = { version = "4.1.2", features = ["derive"] }
+num_cpus = "1.15.0"
+rayon = "1.6.1"
+criterion = "0.4.0"
+
+[[bench]]
+name = "benchmark"
+harness = false
