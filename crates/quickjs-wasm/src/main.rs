@@ -27,10 +27,10 @@ pub extern "C" fn init() {
 }
 
 fn main() -> Result<()> {
-    let context = unsafe { JS_CONTEXT.get().unwrap() };
-
     match io::get_input_string()? {
         Some(input) => {
+            let context = unsafe { JS_CONTEXT.get_or_init(|| Context::default()) };
+
             if let Some(value) = io::get_input_value(context)? {
                 context.global_object()?.set_property("data", value)?;
             }
