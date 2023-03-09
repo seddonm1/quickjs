@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use std::{
+    fmt::Debug,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
@@ -7,9 +8,16 @@ use wasi_common::WasiCtx;
 use wasmtime::*;
 use wasmtime_wasi::sync::WasiCtxBuilder;
 
+#[derive(Clone)]
 pub struct QuickJS {
     engine: Engine,
     module: Module,
+}
+
+impl Debug for QuickJS {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("QuickJS").finish()
+    }
 }
 
 impl Default for QuickJS {
