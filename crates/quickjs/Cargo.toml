@@ -4,15 +4,15 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.68"
-wasi-common = "5.0.0"
-wasmtime = "5.0.0"
-wasmtime-wasi = "5.0.0"
+anyhow = "1.0.69"
+wasi-common = "6.0.0"
+wasmtime = "6.0.0"
+wasmtime-wasi = "6.0.0"
 
 [dev-dependencies]
-clap = { version = "4.1.2", features = ["derive"] }
+clap = { version = "4.1.8", features = ["derive"] }
 num_cpus = "1.15.0"
-rayon = "1.6.1"
+rayon = "1.7.0"
 criterion = "0.4.0"
 
 [[bench]]
