@@ -46,8 +46,8 @@ impl QuickJS {
         inherit_stdout: bool,
         inherit_stderr: bool,
     ) -> Result<Option<String>> {
-        let input = script.as_bytes().to_vec();
-        let input_size = input.len() as i32;
+        let script = script.as_bytes().to_vec();
+        let script_size = script.len() as i32;
         let data = data
             .map(|data| data.as_bytes().to_vec())
             .unwrap_or_default();
@@ -72,20 +72,20 @@ impl QuickJS {
 
         linker.func_wrap(
             "host",
-            "get_input_size",
-            move |_: Caller<'_, WasiCtx>| -> Result<i32> { Ok(input_size) },
+            "get_script_size",
+            move |_: Caller<'_, WasiCtx>| -> Result<i32> { Ok(script_size) },
         )?;
 
         linker.func_wrap(
             "host",
-            "get_input",
+            "get_script",
             move |mut caller: Caller<'_, WasiCtx>, ptr: i32| -> Result<()> {
                 let memory = match caller.get_export("memory") {
                     Some(Extern::Memory(memory)) => memory,
                     _ => return Err(anyhow!("failed to find host memory")),
                 };
                 let offset = ptr as u32 as usize;
-                Ok(memory.write(&mut caller, offset, &input)?)
+                Ok(memory.write(&mut caller, offset, &script)?)
             },
         )?;
 

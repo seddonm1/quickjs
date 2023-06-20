@@ -1,26 +1,25 @@
-This repository demonstrates how to use [quickjs-wasm-rs](https://github.com/Shopify/javy/tree/main/crates/quickjs-wasm-rs) with [wasmtime](https://github.com/bytecodealliance/wasmtime) to easily build a safe and isolated plugin system for Rust.
+This repository demonstrates how to use [quickjs-wasm-rs](https://github.com/bytecodealliance/javy/tree/main/crates/quickjs-wasm-rs) with [wasmtime](https://github.com/bytecodealliance/wasmtime) to easily build a safe and isolated plugin system for Rust.
 
 Code to accompany blog post: https://reorchestrate.com/posts/plugins-for-rust
-
-First `build-wasm.sh` script which will download and build the `quickjs.wasm` module.
 
 # Examples
 
 Run a sequential executor:
 
 ```bash
-cargo run --example iter --release
+make iter_example
 ```
 
 Run a parallel executor:
 
 ```bash
-cargo run --example par_iter --release
+make par_iter_example
 ```
 
 Both accept additional arguments like:
 
 ```bash
+make build_wasm &&\
 cargo run --release --example iter -- \
 --module ./quickjs.wasm \
 --script ./track_points.js \
@@ -32,20 +31,28 @@ cargo run --release --example iter -- \
 
 # Build
 
+To build the `.wasm` module:
+
 ```bash
-cargo build --package quickjs --release
+make build_wasm
+```
+
+To build the project:
+
+```bash
+make build
 ```
 
 # Test
 
 ```bash
-cargo test --package quickjs --release
+make test
 ```
 
 # Bench
 
 ```bash
-cargo bench --package quickjs
+make bench
 ```
 
 # Credits

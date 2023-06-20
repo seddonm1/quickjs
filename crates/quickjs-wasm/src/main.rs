@@ -4,9 +4,9 @@ mod io;
 
 use anyhow::Result;
 use once_cell::sync::OnceCell;
-use quickjs_wasm_rs::Context;
+use quickjs_wasm_rs::JSContextRef;
 
-static mut JS_CONTEXT: OnceCell<Context> = OnceCell::new();
+static mut JS_CONTEXT: OnceCell<JSContextRef> = OnceCell::new();
 static SCRIPT_NAME: &str = "script.js";
 
 /// init() is executed by wizer to create a snapshot after the quickjs context has been initialized.
@@ -16,7 +16,7 @@ static SCRIPT_NAME: &str = "script.js";
 #[export_name = "wizer.initialize"]
 pub extern "C" fn init() {
     unsafe {
-        let context = Context::default();
+        let context = JSContextRef::default();
 
         // add globals to the quickjs instance if enabled
         #[cfg(feature = "console")]
@@ -27,11 +27,11 @@ pub extern "C" fn init() {
 }
 
 fn main() -> Result<()> {
-    match io::get_input_string()? {
+    match io::get_input_script()? {
         Some(input) => {
-            let context = unsafe { JS_CONTEXT.get_or_init(Context::default) };
+            let context = unsafe { JS_CONTEXT.get_or_init(JSContextRef::default) };
 
-            if let Some(value) = io::get_input_value(context)? {
+            if let Some(value) = io::get_input_data(context)? {
                 context.global_object()?.set_property("data", value)?;
             }
 

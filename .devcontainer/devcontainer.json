@@ -5,26 +5,25 @@
 	"build": {
 		"dockerfile": "Dockerfile"
 	},
-	"runArgs": [
-		"-eQUICKJS_WASM_SYS_WASI_SDK_PATH=/opt/wasi-sdk",
-		"--cap-add=SYS_PTRACE",
-		"--security-opt",
-		"seccomp=unconfined"
-	],
+	"runArgs": [],
 	// Set *default* container specific settings.json values on container create.
-	"settings": {
-		"lldb.executable": "/usr/bin/lldb",
-		// VS Code don't watch files under ./target
-		"files.watcherExclude": {
-			"**/target/**": true
-		},
-		"rust-analyzer.checkOnSave.command": "clippy"
-	},
-	// Add the IDs of extensions you want installed when the container is created.
-	"extensions": [
-		"rust-lang.rust-analyzer",
-		"vadimcn.vscode-lldb",
-		"bungcip.better-toml",
-		"serayuzgur.crates"
-	]
+	"customizations": {
+		"vscode": {
+			"settings": {
+				"lldb.executable": "/usr/bin/lldb",
+				// VS Code don't watch files under ./target
+				"files.watcherExclude": {
+					"**/target/**": true
+				},
+				"rust-analyzer.checkOnSave.command": "clippy"
+			},
+			// Add the IDs of extensions you want installed when the container is created.
+			"extensions": [
+				"rust-lang.rust-analyzer",
+				"vadimcn.vscode-lldb",
+				"bungcip.better-toml",
+				"serayuzgur.crates"
+			]
+		}
+	}
 }

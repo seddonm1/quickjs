@@ -10,27 +10,27 @@ use std::{path::PathBuf, time::Instant};
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Path to the wasm module
-    #[arg(short, long)]
+    #[arg(long)]
     module: Option<PathBuf>,
 
     /// Path to the input script
-    #[arg(short, long)]
+    #[arg(long)]
     script: Option<PathBuf>,
 
     /// Path to the data json object
-    #[arg(short, long)]
+    #[arg(long)]
     data: Option<PathBuf>,
 
     /// Number of iterations to execute
-    #[arg(short, long, default_value_t = 1000)]
+    #[arg(long, default_value_t = 1000)]
     iterations: usize,
 
     /// Enable stdout (i.e. console.log) defualt false
-    #[arg(short, long)]
+    #[arg(long)]
     inherit_stdout: bool,
 
     /// Enable stderr (i.e. console.error) default false
-    #[arg(short, long)]
+    #[arg(long)]
     inherit_stderr: bool,
 }
 
