@@ -72,6 +72,7 @@ jobs:
           make build_wasm
       - name: Run tests
         run: |
+          export CARGO_TARGET_DIR=./target
           make test
           make example_iter
       - name: Run clippy
