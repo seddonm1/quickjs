@@ -58,6 +58,14 @@ jobs:
           apt update
           apt install -y clang
           cargo install wizer --features="env_logger structopt"
+      - name: Setup wasi-sdk
+        run: |
+          export QUICKJS_WASM_SYS_WASI_SDK_PATH=/opt/wasi-sdk
+          cd /tmp &&\
+          wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-20/wasi-sdk-20.0-linux.tar.gz
+          mkdir -p $QUICKJS_WASM_SYS_WASI_SDK_PATH
+          tar xvf wasi-sdk-20.0-linux.tar.gz --strip-components=1 -C $QUICKJS_WASM_SYS_WASI_SDK_PATH
+          rm wasi-sdk-20.0-linux.tar.gz
       - name: Build quickjs.wasm
         run: |
           make build_wasm
