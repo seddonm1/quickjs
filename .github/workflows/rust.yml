@@ -57,19 +57,14 @@ jobs:
           cargo install cargo-wasi
           apt update
           apt install -y clang
+          cargo install wizer --features="env_logger structopt"
       - name: Build quickjs.wasm
         run: |
-          ./build-wasm.sh
+          make build_wasm
       - name: Run tests
         run: |
-          cargo test --package quickjs --release
-          cargo run --release --example iter -- \
-          --module ./quickjs.wasm \
-          --script ./track_points.js \
-          --data ./track_points.json \
-          --iterations 1000 \
-          --inherit-stdout \
-          --inherit-stderr
+          make test
+          make example_iter
       - name: Run clippy
         run: |
           cargo clippy --all-targets --workspace -- -D warnings

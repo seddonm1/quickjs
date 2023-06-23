@@ -1,51 +1,87 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use std::{
     fmt::Debug,
     path::PathBuf,
     sync::{Arc, Mutex},
+    thread,
+    time::{Duration, SystemTime},
 };
 use wasi_common::WasiCtx;
 use wasmtime::*;
 use wasmtime_wasi::sync::WasiCtxBuilder;
 
-#[derive(Clone)]
 pub struct QuickJS {
     engine: Engine,
     module: Module,
+    inherit_stdout: bool,
+    inherit_stderr: bool,
+    memory_limit: usize,
+    time_limit: Option<TimeLimit>,
+}
+
+/// A time limit to prevent long executions.
+///
+/// This can be extremely expensive so only use if absolutely required.
+#[derive(Clone, Debug)]
+pub struct TimeLimit {
+    /// the maximum duration to wait for the execution to finish
+    pub time_limit: Duration,
+    /// the frequency to evaluate whether execution is finished
+    /// a more frequent evaluation will decrease the performance of the execution
+    pub evaluation_frequency: Duration,
+}
+
+impl QuickJS {
+    /// try to instantiate a new QuickJS engine
+    ///
+    /// parameters:
+    /// - `path`: optional override for the quickjs.wasm instance
+    /// - `inherit_stdout`: route `console.log` calls to stdout
+    /// - `inherit_stderr`:route `console.error` calls to stdout
+    /// - `memory_limit`: optional memory limit for runtime
+    /// - `time_limit`: optional time limit for function to return.
+    ///   this can be extremely expensive so only use if absolutely required.
+    pub fn try_new(
+        path: Option<PathBuf>,
+        inherit_stdout: bool,
+        inherit_stderr: bool,
+        memory_limit: Option<usize>,
+        time_limit: Option<TimeLimit>,
+    ) -> Result<Self> {
+        let engine = Engine::new(Config::default().epoch_interruption(time_limit.is_some()))?;
+        let module = match path {
+            Some(path) => Module::from_file(&engine, path)?,
+            None => Module::from_binary(&engine, include_bytes!("../../../quickjs.wasm"))?,
+        };
+        Ok(Self {
+            engine,
+            module,
+            inherit_stdout,
+            inherit_stderr,
+            memory_limit: memory_limit.unwrap_or(usize::MAX),
+            time_limit,
+        })
+    }
 }
 
 impl Debug for QuickJS {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("QuickJS").finish()
+        f.debug_struct("QuickJS")
+            .field("inherit_stdout", &self.inherit_stdout)
+            .field("inherit_stderr", &self.inherit_stderr)
+            .field("memory_limit", &self.memory_limit)
+            .field("time_limit", &self.time_limit)
+            .finish()
     }
 }
-
-impl Default for QuickJS {
-    fn default() -> Self {
-        let engine = Engine::default();
-        let module = Module::from_binary(&engine, include_bytes!("../../../quickjs.wasm")).unwrap();
-        Self { engine, module }
-    }
-}
-
-impl TryFrom<PathBuf> for QuickJS {
-    type Error = anyhow::Error;
-
-    fn try_from(path: PathBuf) -> Result<Self, Self::Error> {
-        let engine = Engine::default();
-        let module = Module::from_file(&engine, path)?;
-        Ok(Self { engine, module })
-    }
+struct State {
+    pub wasi: WasiCtx,
+    pub limits: StoreLimits,
+    pub start_time: SystemTime,
 }
 
 impl QuickJS {
-    pub fn try_execute(
-        &self,
-        script: &str,
-        data: Option<&str>,
-        inherit_stdout: bool,
-        inherit_stderr: bool,
-    ) -> Result<Option<String>> {
+    pub fn try_execute(&self, script: &str, data: Option<&str>) -> Result<Option<String>> {
         let script = script.as_bytes().to_vec();
         let script_size = script.len() as i32;
         let data = data
@@ -55,31 +91,63 @@ impl QuickJS {
         let output = Arc::new(Mutex::new(None));
 
         let mut linker = Linker::new(&self.engine);
-        wasmtime_wasi::add_to_linker(&mut linker, |s| s)?;
+        wasmtime_wasi::add_to_linker(&mut linker, |state: &mut State| &mut state.wasi)?;
 
         let mut wasi_ctx_builder = WasiCtxBuilder::new();
-        if inherit_stdout {
+        if self.inherit_stdout {
             wasi_ctx_builder = wasi_ctx_builder.inherit_stdout();
         };
-        if inherit_stderr {
+        if self.inherit_stderr {
             wasi_ctx_builder = wasi_ctx_builder.inherit_stderr();
         };
 
         let wasi = wasi_ctx_builder.build();
-        let mut store = Store::new(&self.engine, wasi);
+
+        let mut store = Store::new(
+            &self.engine,
+            State {
+                wasi,
+                limits: StoreLimitsBuilder::new()
+                    .memory_size(self.memory_limit)
+                    .instances(1)
+                    .build(),
+                start_time: SystemTime::now(),
+            },
+        );
+        store.limiter(move |state| &mut state.limits);
+
+        // set up time limit
+        if let Some(time_limit) = self.time_limit.clone() {
+            store.epoch_deadline_callback(move |state| {
+                let elapsed = state.data().start_time.elapsed()?;
+                if elapsed > time_limit.time_limit {
+                    bail!("exceeds time limit")
+                } else {
+                    Ok(UpdateDeadline::Continue(1))
+                }
+            });
+
+            store.set_epoch_deadline(1);
+            let engine = store.engine().clone();
+            thread::spawn(move || loop {
+                thread::sleep(time_limit.evaluation_frequency);
+                engine.increment_epoch();
+            });
+        }
+
         let memory_type = MemoryType::new(1, None);
         Memory::new(&mut store, memory_type)?;
 
         linker.func_wrap(
             "host",
             "get_script_size",
-            move |_: Caller<'_, WasiCtx>| -> Result<i32> { Ok(script_size) },
+            move |_: Caller<'_, State>| -> Result<i32> { Ok(script_size) },
         )?;
 
         linker.func_wrap(
             "host",
             "get_script",
-            move |mut caller: Caller<'_, WasiCtx>, ptr: i32| -> Result<()> {
+            move |mut caller: Caller<'_, State>, ptr: i32| -> Result<()> {
                 let memory = match caller.get_export("memory") {
                     Some(Extern::Memory(memory)) => memory,
                     _ => return Err(anyhow!("failed to find host memory")),
@@ -92,13 +160,13 @@ impl QuickJS {
         linker.func_wrap(
             "host",
             "get_data_size",
-            move |_: Caller<'_, WasiCtx>| -> Result<i32> { Ok(data_size) },
+            move |_: Caller<'_, State>| -> Result<i32> { Ok(data_size) },
         )?;
 
         linker.func_wrap(
             "host",
             "get_data",
-            move |mut caller: Caller<'_, WasiCtx>, ptr: i32| -> Result<()> {
+            move |mut caller: Caller<'_, State>, ptr: i32| -> Result<()> {
                 let memory = match caller.get_export("memory") {
                     Some(Extern::Memory(memory)) => memory,
                     _ => return Err(anyhow!("failed to find host memory")),
@@ -112,7 +180,7 @@ impl QuickJS {
         linker.func_wrap(
             "host",
             "set_output",
-            move |mut caller: Caller<'_, WasiCtx>, ptr: i32, capacity: i32| -> Result<()> {
+            move |mut caller: Caller<'_, State>, ptr: i32, capacity: i32| -> Result<()> {
                 let mut output = output_clone.lock().unwrap();
 
                 *output = if capacity == 0 {
@@ -151,20 +219,20 @@ mod tests {
 
     #[test]
     fn try_execute() {
-        let quickjs = QuickJS::default();
+        let quickjs = QuickJS::try_new(None, false, false, None, None).unwrap();
 
         let script = r#"
             'quickjs' + 'wasm'
         "#;
 
-        let result = quickjs.try_execute(script, None, false, false).unwrap();
+        let result = quickjs.try_execute(script, None).unwrap();
 
         assert_eq!(result, Some("\"quickjswasm\"".to_string()));
     }
 
     #[test]
     fn try_execute_data() {
-        let quickjs = QuickJS::default();
+        let quickjs = QuickJS::try_new(None, false, false, None, None).unwrap();
 
         let script = r#"
             'quickjs' + data.input
@@ -172,10 +240,71 @@ mod tests {
 
         let data = r#"{"input": "wasm"}"#;
 
-        let result = quickjs
-            .try_execute(script, Some(data), false, false)
-            .unwrap();
+        let result = quickjs.try_execute(script, Some(data)).unwrap();
 
         assert_eq!(result, Some("\"quickjswasm\"".to_string()));
+    }
+
+    #[test]
+    fn try_throw_error() {
+        let quickjs = QuickJS::try_new(None, false, false, None, None).unwrap();
+
+        let script = r#"
+            throw new Error('error');
+        "#;
+
+        match quickjs.try_execute(script, None) {
+            Err(err) if err.root_cause().to_string().contains("exit status 1") => {}
+            other => panic!("{:?}", other),
+        }
+    }
+
+    #[test]
+    fn try_execute_memory_limit() {
+        let quickjs = QuickJS::try_new(None, false, false, Some(1024), None).unwrap();
+
+        let script = r#"
+            'quickjs' + data.input
+        "#;
+
+        match quickjs.try_execute(script, None) {
+            Err(err)
+                if err
+                    .root_cause()
+                    .to_string()
+                    .contains("exceeds memory limit") => {}
+            other => panic!("{:?}", other),
+        }
+    }
+
+    #[test]
+    fn try_execute_time_limit() {
+        let quickjs = QuickJS::try_new(
+            None,
+            false,
+            false,
+            None,
+            Some(TimeLimit {
+                time_limit: Duration::from_secs(2),
+                evaluation_frequency: Duration::from_millis(10),
+            }),
+        )
+        .unwrap();
+
+        let script = r#"
+            function sleep(milliseconds) {
+                const date = Date.now();
+                let currentDate = null;
+                do {
+                currentDate = Date.now();
+                } while (currentDate - date < milliseconds);
+            }
+            sleep(5000);
+        "#;
+
+        match quickjs.try_execute(script, None) {
+            Err(err) if err.root_cause().to_string().contains("exceeds time limit") => {}
+            other => panic!("{:?}", other),
+        }
     }
 }

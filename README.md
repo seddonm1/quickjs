@@ -26,7 +26,10 @@ cargo run --release --example iter -- \
 --data ./track_points.json \
 --iterations 1000 \
 --inherit-stdout \
---inherit-stderr
+--inherit-stderr \
+--memory-limit-bytes 4194304 \
+--time-limit-nanos 20000000 \
+--time-limit-evaluation-frequency-nanos 1000000
 ```
 
 # Build
@@ -58,6 +61,6 @@ make bench
 # Credits
 
 - Peter Malmgren https://github.com/pmalmgren/wasi-data-sharing
-- Shopify https://github.com/Shopify/javy
+- Shopify https://github.com/Shopify/javy now https://github.com/bytecodealliance/javy
 - Bytecode Alliance https://github.com/bytecodealliance/wasmtime
 - Bytecode Alliance https://github.com/bytecodealliance/wizer

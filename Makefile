@@ -1,4 +1,3 @@
-
 iter_example: build_wasm
 	cargo run --release --example iter
 
@@ -16,7 +15,7 @@ bench: build_wasm
 
 build_wasm:
 	cargo build --release --package quickjs-wasm --target wasm32-wasi
-	wizer --allow-wasi target/wasm32-wasi/release/quickjs-wasm.wasm --wasm-bulk-memory true -o quickjs.wasm
+	wizer --allow-wasi ${CARGO_TARGET_DIR}/wasm32-wasi/release/quickjs-wasm.wasm --wasm-bulk-memory true -o quickjs.wasm
 
 lint:
 	cargo clippy --all-targets --all-features -- -D warnings &&\

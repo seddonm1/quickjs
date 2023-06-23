@@ -2,9 +2,12 @@ extern crate quickjs;
 
 use anyhow::Result;
 use clap::Parser;
-use quickjs::QuickJS;
+use quickjs::{QuickJS, TimeLimit};
 use rayon::prelude::*;
-use std::{path::PathBuf, time::Instant};
+use std::{
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 /// Simple program to demonstr
 #[derive(Parser, Debug)]
@@ -15,12 +18,12 @@ struct Args {
     module: Option<PathBuf>,
 
     /// Path to the input script
-    #[arg(long)]
-    script: Option<PathBuf>,
+    #[arg(long, default_value = "track_points.js")]
+    script: PathBuf,
 
     /// Path to the data json object
-    #[arg(long)]
-    data: Option<PathBuf>,
+    #[arg(long, default_value = "track_points.json")]
+    data: PathBuf,
 
     /// Number of iterations to execute
     #[arg(long, default_value_t = 1000)]
@@ -33,25 +36,36 @@ struct Args {
     /// Enable stderr (i.e. console.error) default false
     #[arg(long)]
     inherit_stderr: bool,
+
+    /// Set memory limit in bytes to restrict unconstrained memory growth
+    #[arg(long)]
+    memory_limit_bytes: Option<usize>,
+
+    /// Set time limit in nanoseconds to restrict runtime
+    #[arg(long)]
+    time_limit_nanos: Option<u64>,
+
+    /// Set time limit evaluation frequency in nanoseconds. Only used if `time_limit_nanos` is set.
+    #[arg(long, default_value_t = 10000000)]
+    time_limit_evaluation_frequency_nanos: u64,
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    let quickjs = match args.module {
-        Some(path) => QuickJS::try_from(path)?,
-        None => QuickJS::default(),
-    };
+    let quickjs = QuickJS::try_new(
+        args.module,
+        args.inherit_stdout,
+        args.inherit_stderr,
+        args.memory_limit_bytes,
+        args.time_limit_nanos.map(|nanos| TimeLimit {
+            time_limit: Duration::from_nanos(nanos),
+            evaluation_frequency: Duration::from_nanos(args.time_limit_evaluation_frequency_nanos),
+        }),
+    )?;
 
-    let script = match args.script {
-        Some(path) => std::fs::read_to_string(path)?,
-        None => include_str!("../../../track_points.js").to_string(),
-    };
-
-    let data = match args.data {
-        Some(path) => std::fs::read_to_string(path)?,
-        None => include_str!("../../../track_points.json").to_string(),
-    };
+    let script = std::fs::read_to_string(args.script)?;
+    let data = std::fs::read_to_string(args.data)?;
 
     let start = Instant::now();
 
@@ -64,12 +78,7 @@ fn main() -> Result<()> {
             chunk
                 .iter()
                 .map(|i| {
-                    let output = quickjs.try_execute(
-                        &script,
-                        Some(&data),
-                        args.inherit_stdout,
-                        args.inherit_stderr,
-                    )?;
+                    let output = quickjs.try_execute(&script, Some(&data))?;
                     println!("{i} {}", output.unwrap_or_else(|| "None".to_string()));
                     Ok(())
                 })
