@@ -49,6 +49,7 @@ jobs:
           key: target-cache-
       - name: Setup Rust toolchain
         run: |
+          CARGO_TARGET_DIR=target
           rustup toolchain install ${{ matrix.rust }}
           rustup default ${{ matrix.rust }}
           rustup component add rustfmt
