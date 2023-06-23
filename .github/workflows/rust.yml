@@ -49,7 +49,6 @@ jobs:
           key: target-cache-
       - name: Setup Rust toolchain
         run: |
-          export CARGO_TARGET_DIR=./target
           rustup toolchain install ${{ matrix.rust }}
           rustup default ${{ matrix.rust }}
           rustup component add rustfmt
@@ -69,6 +68,7 @@ jobs:
           rm wasi-sdk-20.0-linux.tar.gz
       - name: Build quickjs.wasm
         run: |
+          export CARGO_TARGET_DIR=./target
           make build_wasm
       - name: Run tests
         run: |
