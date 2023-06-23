@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
     thread,
-    time::{Duration, SystemTime},
+    time::Duration,
 };
 use wasi_common::WasiCtx;
 use wasmtime::*;
@@ -26,9 +26,9 @@ pub struct QuickJS {
 pub struct TimeLimit {
     /// the maximum duration to wait for the execution to finish
     pub time_limit: Duration,
-    /// the frequency to evaluate whether execution is finished
+    /// the interval between evaluations whether execution is finished
     /// a more frequent evaluation will decrease the performance of the execution
-    pub evaluation_frequency: Duration,
+    pub evaluation_interval: Duration,
 }
 
 impl QuickJS {
@@ -77,7 +77,6 @@ impl Debug for QuickJS {
 struct State {
     pub wasi: WasiCtx,
     pub limits: StoreLimits,
-    pub start_time: SystemTime,
 }
 
 impl QuickJS {
@@ -111,26 +110,29 @@ impl QuickJS {
                     .memory_size(self.memory_limit)
                     .instances(1)
                     .build(),
-                start_time: SystemTime::now(),
             },
         );
         store.limiter(move |state| &mut state.limits);
 
-        // set up time limit
         if let Some(time_limit) = self.time_limit.clone() {
-            store.epoch_deadline_callback(move |state| {
-                let elapsed = state.data().start_time.elapsed()?;
-                if elapsed > time_limit.time_limit {
-                    bail!("exceeds time limit")
-                } else {
-                    Ok(UpdateDeadline::Continue(1))
+            // calculate number of iterations to met timeout
+            let mut timeout = u32::try_from(
+                time_limit.time_limit.as_micros() / time_limit.evaluation_interval.as_micros(),
+            )?;
+            store.epoch_deadline_callback(move |_| {
+                assert!(timeout > 0);
+                timeout -= 1;
+                if timeout == 0 {
+                    bail!("exceeds time limit");
                 }
+                Ok(UpdateDeadline::Continue(1))
             });
 
             store.set_epoch_deadline(1);
+
             let engine = store.engine().clone();
             thread::spawn(move || loop {
-                thread::sleep(time_limit.evaluation_frequency);
+                thread::sleep(time_limit.evaluation_interval);
                 engine.increment_epoch();
             });
         }
@@ -286,7 +288,7 @@ mod tests {
             None,
             Some(TimeLimit {
                 time_limit: Duration::from_secs(2),
-                evaluation_frequency: Duration::from_millis(10),
+                evaluation_interval: Duration::from_millis(10),
             }),
         )
         .unwrap();

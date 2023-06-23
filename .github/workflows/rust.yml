@@ -74,7 +74,8 @@ jobs:
         run: |
           export CARGO_TARGET_DIR=./target
           make test
-          make example_iter
+          make iter_example
+          make par_iter_example
       - name: Run clippy
         run: |
           cargo clippy --all-targets --workspace -- -D warnings

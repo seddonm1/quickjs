@@ -29,7 +29,7 @@ cargo run --release --example iter -- \
 --inherit-stderr \
 --memory-limit-bytes 4194304 \
 --time-limit-nanos 20000000 \
---time-limit-evaluation-frequency-nanos 1000000
+--time-limit-evaluation-interval-nanos 1000000
 ```
 
 # Build

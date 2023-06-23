@@ -45,9 +45,9 @@ struct Args {
     #[arg(long)]
     time_limit_nanos: Option<u64>,
 
-    /// Set time limit evaluation frequency in nanoseconds. Only used if `time_limit_nanos` is set.
+    /// Set time limit evaluation interval in nanoseconds. Only used if `time_limit_nanos` is set.
     #[arg(long, default_value_t = 10000000)]
-    time_limit_evaluation_frequency_nanos: u64,
+    time_limit_evaluation_interval_nanos: u64,
 }
 
 fn main() -> Result<()> {
@@ -60,7 +60,7 @@ fn main() -> Result<()> {
         args.memory_limit_bytes,
         args.time_limit_nanos.map(|nanos| TimeLimit {
             time_limit: Duration::from_nanos(nanos),
-            evaluation_frequency: Duration::from_nanos(args.time_limit_evaluation_frequency_nanos),
+            evaluation_interval: Duration::from_nanos(args.time_limit_evaluation_interval_nanos),
         }),
     )?;
 
