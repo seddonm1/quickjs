@@ -12,18 +12,53 @@ pub fn bench(c: &mut Criterion) {
         b.iter(|| black_box(quickjs.try_execute(script, Some(data)).unwrap()))
     });
 
+    let quickjs = QuickJS::try_new(None, false, false, Some(4194304), None).unwrap();
+    c.bench_function("try_execute_with_memory_limit", |b| {
+        b.iter(|| black_box(quickjs.try_execute(script, Some(data)).unwrap()))
+    });
+
     let quickjs = QuickJS::try_new(
         None,
         false,
         false,
         None,
-        Some(TimeLimit {
-            time_limit: Duration::from_millis(10000),
-            evaluation_interval: Duration::from_millis(100),
-        }),
+        Some(
+            TimeLimit::new(Duration::from_millis(10000))
+                .with_evaluation_interval(Duration::from_micros(100)),
+        ),
     )
     .unwrap();
-    c.bench_function("try_execute_with_time_limit", |b| {
+    c.bench_function("try_execute_with_time_limit_100us", |b| {
+        b.iter(|| black_box(quickjs.try_execute(script, Some(data)).unwrap()))
+    });
+
+    let quickjs = QuickJS::try_new(
+        None,
+        false,
+        false,
+        None,
+        Some(
+            TimeLimit::new(Duration::from_millis(10000))
+                .with_evaluation_interval(Duration::from_micros(1000)),
+        ),
+    )
+    .unwrap();
+    c.bench_function("try_execute_with_time_limit_1000us", |b| {
+        b.iter(|| black_box(quickjs.try_execute(script, Some(data)).unwrap()))
+    });
+
+    let quickjs = QuickJS::try_new(
+        None,
+        false,
+        false,
+        None,
+        Some(
+            TimeLimit::new(Duration::from_millis(10000))
+                .with_evaluation_interval(Duration::from_micros(10000)),
+        ),
+    )
+    .unwrap();
+    c.bench_function("try_execute_with_time_limit_10000us", |b| {
         b.iter(|| black_box(quickjs.try_execute(script, Some(data)).unwrap()))
     });
 }

@@ -68,11 +68,9 @@ jobs:
           rm wasi-sdk-20.0-linux.tar.gz
       - name: Build quickjs.wasm
         run: |
-          export CARGO_TARGET_DIR=./target
           make build_wasm
       - name: Run tests
         run: |
-          export CARGO_TARGET_DIR=./target
           make test
           make iter_example
           make par_iter_example

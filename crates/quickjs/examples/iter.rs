@@ -38,15 +38,15 @@ struct Args {
 
     /// Set runtime memory limit in bytes to restrict unconstrained memory growth
     #[arg(long)]
-    memory_limit_bytes: Option<usize>,
+    memory_limit_bytes: Option<u32>,
 
-    /// Set runtime time limit in nanoseconds
+    /// Set runtime time limit in microseconds
     #[arg(long)]
-    time_limit_nanos: Option<u64>,
+    time_limit_micros: Option<u64>,
 
-    /// Set time limit evaluation interval in nanoseconds. Only used if `time_limit_nanos` is set.
-    #[arg(long, default_value_t = 10000000)]
-    time_limit_evaluation_interval_nanos: u64,
+    /// Set time limit evaluation interval. only used if `time_limit_micros` is set.
+    #[arg(long)]
+    time_limit_evaluation_interval_micros: Option<u64>,
 }
 
 fn main() -> Result<()> {
@@ -57,9 +57,12 @@ fn main() -> Result<()> {
         args.inherit_stdout,
         args.inherit_stderr,
         args.memory_limit_bytes,
-        args.time_limit_nanos.map(|nanos| TimeLimit {
-            time_limit: Duration::from_nanos(nanos),
-            evaluation_interval: Duration::from_nanos(args.time_limit_evaluation_interval_nanos),
+        args.time_limit_micros.map(|limit| {
+            let mut limit = TimeLimit::new(Duration::from_micros(limit));
+            if let Some(evaluation_interval) = args.time_limit_evaluation_interval_micros {
+                limit.evaluation_interval = Duration::from_micros(evaluation_interval);
+            }
+            limit
         }),
     )?;
 

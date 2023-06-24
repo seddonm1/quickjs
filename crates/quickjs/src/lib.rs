@@ -3,19 +3,22 @@ use std::{
     fmt::Debug,
     path::PathBuf,
     sync::{Arc, Mutex},
-    thread,
+    thread::{self},
     time::Duration,
 };
 use wasi_common::WasiCtx;
 use wasmtime::*;
 use wasmtime_wasi::sync::WasiCtxBuilder;
 
+static PAGE_SIZE: u32 = 65536;
+static EPOCH_INTERVAL: u64 = 100;
+
 pub struct QuickJS {
     engine: Engine,
     module: Module,
     inherit_stdout: bool,
     inherit_stderr: bool,
-    memory_limit: usize,
+    memory_limit: Option<u32>,
     time_limit: Option<TimeLimit>,
 }
 
@@ -25,10 +28,25 @@ pub struct QuickJS {
 #[derive(Clone, Debug)]
 pub struct TimeLimit {
     /// the maximum duration to wait for the execution to finish
-    pub time_limit: Duration,
+    pub limit: Duration,
     /// the interval between evaluations whether execution is finished
     /// a more frequent evaluation will decrease the performance of the execution
     pub evaluation_interval: Duration,
+}
+
+impl TimeLimit {
+    pub fn new(limit: Duration) -> Self {
+        Self {
+            limit,
+            evaluation_interval: Duration::from_micros(EPOCH_INTERVAL),
+        }
+    }
+
+    /// override default interval with custom value
+    pub fn with_evaluation_interval(mut self, evaluation_interval: Duration) -> Self {
+        self.evaluation_interval = evaluation_interval;
+        self
+    }
 }
 
 impl QuickJS {
@@ -38,17 +56,27 @@ impl QuickJS {
     /// - `path`: optional override for the quickjs.wasm instance
     /// - `inherit_stdout`: route `console.log` calls to stdout
     /// - `inherit_stderr`:route `console.error` calls to stdout
-    /// - `memory_limit`: optional memory limit for runtime
-    /// - `time_limit`: optional time limit for function to return.
-    ///   this can be extremely expensive so only use if absolutely required.
+    /// - `memory_limit`: runtime memory limit in bytes to restrict unconstrained memory growth
+    /// - `time_limit`: runtime time limit to restrict long running programs/infinite loops
     pub fn try_new(
         path: Option<PathBuf>,
         inherit_stdout: bool,
         inherit_stderr: bool,
-        memory_limit: Option<usize>,
+        memory_limit: Option<u32>,
         time_limit: Option<TimeLimit>,
     ) -> Result<Self> {
         let engine = Engine::new(Config::default().epoch_interruption(time_limit.is_some()))?;
+
+        // engine global level interrupt
+        if let Some(time_limit) = &time_limit {
+            let evaluation_interval = time_limit.evaluation_interval;
+            let engine_clone = engine.clone();
+            thread::spawn(move || loop {
+                thread::sleep(evaluation_interval);
+                engine_clone.increment_epoch();
+            });
+        }
+
         let module = match path {
             Some(path) => Module::from_file(&engine, path)?,
             None => Module::from_binary(&engine, include_bytes!("../../../quickjs.wasm"))?,
@@ -58,7 +86,7 @@ impl QuickJS {
             module,
             inherit_stdout,
             inherit_stderr,
-            memory_limit: memory_limit.unwrap_or(usize::MAX),
+            memory_limit,
             time_limit,
         })
     }
@@ -102,42 +130,39 @@ impl QuickJS {
 
         let wasi = wasi_ctx_builder.build();
 
-        let mut store = Store::new(
-            &self.engine,
-            State {
-                wasi,
-                limits: StoreLimitsBuilder::new()
-                    .memory_size(self.memory_limit)
+        // setup memory limits and
+        let (memory_type, limits) = match self.memory_limit {
+            Some(memory_limit) => (
+                MemoryType::new(memory_limit / PAGE_SIZE, Some(memory_limit / PAGE_SIZE)),
+                StoreLimitsBuilder::new()
                     .instances(1)
+                    .memory_size(memory_limit as usize)
                     .build(),
-            },
-        );
+            ),
+            None => (
+                MemoryType::new(1, None),
+                StoreLimitsBuilder::new().instances(1).build(),
+            ),
+        };
+
+        let mut store = Store::new(&self.engine, State { wasi, limits });
         store.limiter(move |state| &mut state.limits);
 
-        if let Some(time_limit) = self.time_limit.clone() {
-            // calculate number of iterations to met timeout
-            let mut timeout = u32::try_from(
-                time_limit.time_limit.as_micros() / time_limit.evaluation_interval.as_micros(),
+        if let Some(time_limit) = &self.time_limit {
+            // calculate number of epochs to meet timeout for this execution
+            let mut epoch_limit = u32::try_from(
+                time_limit.limit.as_micros() / time_limit.evaluation_interval.as_micros(),
             )?;
             store.epoch_deadline_callback(move |_| {
-                assert!(timeout > 0);
-                timeout -= 1;
-                if timeout == 0 {
+                epoch_limit -= 1;
+                if epoch_limit == 0 {
                     bail!("exceeds time limit");
                 }
                 Ok(UpdateDeadline::Continue(1))
             });
-
             store.set_epoch_deadline(1);
-
-            let engine = store.engine().clone();
-            thread::spawn(move || loop {
-                thread::sleep(time_limit.evaluation_interval);
-                engine.increment_epoch();
-            });
         }
 
-        let memory_type = MemoryType::new(1, None);
         Memory::new(&mut store, memory_type)?;
 
         linker.func_wrap(
@@ -286,10 +311,7 @@ mod tests {
             false,
             false,
             None,
-            Some(TimeLimit {
-                time_limit: Duration::from_secs(2),
-                evaluation_interval: Duration::from_millis(10),
-            }),
+            Some(TimeLimit::new(Duration::from_secs(2))),
         )
         .unwrap();
 
