@@ -7,7 +7,7 @@ extern "C" {
     fn get_script_size() -> i32;
     fn get_data(ptr: i32);
     fn get_data_size() -> i32;
-    fn set_output(ptr: i32, size: i32);
+    fn set_output(ptr: i32, size: i32, error: i32);
 }
 
 /// Transcodes a byte slice containing a JSON encoded payload into a [`JSValueRef`].
@@ -67,24 +67,32 @@ pub fn get_input_data(context: &JSContextRef) -> Result<Option<JSValueRef>> {
 }
 
 /// sets the output value on the host
-pub fn set_output_value(output: Option<JSValueRef>) -> Result<()> {
+pub fn set_output_value(output: Result<Option<JSValueRef>>) -> Result<()> {
     match output {
-        Some(output) if !output.is_undefined() => {
+        Ok(None) => unsafe {
+            set_output(0, 0, 0);
+        },
+        Ok(Some(output)) => {
             let output = transcode_output(output)?;
 
             let size = output.len() as i32;
             let ptr = output.as_ptr();
 
             unsafe {
-                set_output(ptr as i32, size);
-            };
+                set_output(ptr as i32, size, 0);
+            }
         }
-        _ => {
+        Err(err) => {
+            let err = err.to_string();
+
+            let output = err.as_bytes();
+            let size = output.len() as i32;
+            let ptr = output.as_ptr();
+
             unsafe {
-                set_output(0, 0);
+                set_output(ptr as i32, size, 1);
             };
         }
     }
-
     Ok(())
 }

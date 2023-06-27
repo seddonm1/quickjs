@@ -207,7 +207,11 @@ impl QuickJS {
         linker.func_wrap(
             "host",
             "set_output",
-            move |mut caller: Caller<'_, State>, ptr: i32, capacity: i32| -> Result<()> {
+            move |mut caller: Caller<'_, State>,
+                  ptr: i32,
+                  capacity: i32,
+                  error: i32|
+                  -> Result<()> {
                 let mut output = output_clone.lock().unwrap();
 
                 *output = if capacity == 0 {
@@ -220,7 +224,13 @@ impl QuickJS {
                     let offset = ptr as u32 as usize;
                     let mut buffer: Vec<u8> = vec![0; capacity as usize];
                     memory.read(&caller, offset, &mut buffer)?;
-                    Some(String::from_utf8(buffer)?)
+
+                    let result = String::from_utf8(buffer)?;
+                    Some(if error == 1 {
+                        Err(anyhow!(result))
+                    } else {
+                        Ok(result)
+                    })
                 };
 
                 Ok(())
@@ -235,8 +245,8 @@ impl QuickJS {
             .typed::<(), ()>(&store)?
             .call(&mut store, ())?;
 
-        let output = output.lock().unwrap();
-        Ok(output.to_owned())
+        let mut output = output.lock().unwrap();
+        output.take().transpose()
     }
 }
 
@@ -277,29 +287,41 @@ mod tests {
         let quickjs = QuickJS::try_new(None, false, false, None, None).unwrap();
 
         let script = r#"
-            throw new Error('error');
+            throw new Error('myerror');
         "#;
 
         match quickjs.try_execute(script, None) {
-            Err(err) if err.root_cause().to_string().contains("exit status 1") => {}
+            Err(err) if err.to_string().contains("Uncaught Error: myerror") => {}
             other => panic!("{:?}", other),
         }
     }
 
     #[test]
-    fn try_execute_memory_limit() {
-        let quickjs = QuickJS::try_new(None, false, false, Some(1024), None).unwrap();
+    fn try_execute_memory_limit_normal() {
+        let quickjs = QuickJS::try_new(None, false, false, Some(2097152), None).unwrap();
 
         let script = r#"
-            'quickjs' + data.input
+            'quickjs' + 'wasm'
+        "#;
+
+        let result = quickjs.try_execute(script, None).unwrap();
+
+        assert_eq!(result, Some("\"quickjswasm\"".to_string()));
+    }
+
+    #[test]
+    fn try_execute_memory_limit_exceed() {
+        let quickjs = QuickJS::try_new(None, false, false, Some(2097152), None).unwrap();
+
+        let script = r#"
+            let memory = [];
+            while (true) {
+                memory.push("allocate");
+            }
         "#;
 
         match quickjs.try_execute(script, None) {
-            Err(err)
-                if err
-                    .root_cause()
-                    .to_string()
-                    .contains("exceeds memory limit") => {}
+            Err(err) if err.to_string().contains("out of memory") => {}
             other => panic!("{:?}", other),
         }
     }
@@ -320,7 +342,7 @@ mod tests {
                 const date = Date.now();
                 let currentDate = null;
                 do {
-                currentDate = Date.now();
+                    currentDate = Date.now();
                 } while (currentDate - date < milliseconds);
             }
             sleep(5000);

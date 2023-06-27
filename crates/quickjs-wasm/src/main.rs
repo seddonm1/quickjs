@@ -35,9 +35,8 @@ fn main() -> Result<()> {
                 context.global_object()?.set_property("data", value)?;
             }
 
-            let output = context.eval_global(SCRIPT_NAME, &input)?;
-            io::set_output_value(Some(output))
+            io::set_output_value(context.eval_global(SCRIPT_NAME, &input).map(Some))
         }
-        None => io::set_output_value(None),
+        None => io::set_output_value(Ok(None)),
     }
 }
