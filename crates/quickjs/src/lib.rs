@@ -345,7 +345,7 @@ mod tests {
                     currentDate = Date.now();
                 } while (currentDate - date < milliseconds);
             }
-            sleep(5000);
+            sleep(30000);
         "#;
 
         match quickjs.try_execute(script, None) {

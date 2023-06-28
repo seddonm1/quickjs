@@ -8,7 +8,7 @@ build: build_wasm
 	cargo build --release --package quickjs
 
 test: build_wasm
-	cargo test --package quickjs
+	cargo test --release --package quickjs
 
 bench: build_wasm
 	cargo bench --package quickjs
