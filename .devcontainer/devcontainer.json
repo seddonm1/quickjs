@@ -6,6 +6,9 @@
 		"dockerfile": "Dockerfile"
 	},
 	"runArgs": [],
+	"containerEnv": {
+		"CARGO_TARGET_DIR": "/tmp/target"
+	},
 	// Set *default* container specific settings.json values on container create.
 	"customizations": {
 		"vscode": {

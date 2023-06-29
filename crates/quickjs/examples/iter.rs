@@ -2,8 +2,11 @@ extern crate quickjs;
 
 use anyhow::Result;
 use clap::Parser;
-use quickjs::QuickJS;
-use std::{path::PathBuf, time::Instant};
+use quickjs::{QuickJS, TimeLimit};
+use std::{
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 /// Simple program to demonstr
 #[derive(Parser, Debug)]
@@ -14,12 +17,12 @@ struct Args {
     module: Option<PathBuf>,
 
     /// Path to the input script
-    #[arg(long)]
-    script: Option<PathBuf>,
+    #[arg(long, default_value = "track_points.js")]
+    script: PathBuf,
 
     /// Path to the data json object
-    #[arg(long)]
-    data: Option<PathBuf>,
+    #[arg(long, default_value = "track_points.json")]
+    data: PathBuf,
 
     /// Number of iterations to execute
     #[arg(long, default_value_t = 1000)]
@@ -32,34 +35,43 @@ struct Args {
     /// Enable stderr (i.e. console.error) default false
     #[arg(long)]
     inherit_stderr: bool,
+
+    /// Set runtime memory limit in bytes to restrict unconstrained memory growth
+    #[arg(long)]
+    memory_limit_bytes: Option<u32>,
+
+    /// Set runtime time limit in microseconds
+    #[arg(long)]
+    time_limit_micros: Option<u64>,
+
+    /// Set time limit evaluation interval. only used if `time_limit_micros` is set.
+    #[arg(long)]
+    time_limit_evaluation_interval_micros: Option<u64>,
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    let quickjs = match args.module {
-        Some(path) => QuickJS::try_from(path)?,
-        None => QuickJS::default(),
-    };
+    let quickjs = QuickJS::try_new(
+        args.module,
+        args.inherit_stdout,
+        args.inherit_stderr,
+        args.memory_limit_bytes,
+        args.time_limit_micros.map(|limit| {
+            let mut limit = TimeLimit::new(Duration::from_micros(limit));
+            if let Some(evaluation_interval) = args.time_limit_evaluation_interval_micros {
+                limit.evaluation_interval = Duration::from_micros(evaluation_interval);
+            }
+            limit
+        }),
+    )?;
 
-    let script = match args.script {
-        Some(path) => std::fs::read_to_string(path)?,
-        None => include_str!("../../../track_points.js").to_string(),
-    };
-
-    let data = match args.data {
-        Some(path) => std::fs::read_to_string(path)?,
-        None => include_str!("../../../track_points.json").to_string(),
-    };
+    let script = std::fs::read_to_string(args.script)?;
+    let data = std::fs::read_to_string(args.data)?;
 
     let start = Instant::now();
     for i in 0..args.iterations {
-        let output = quickjs.try_execute(
-            &script,
-            Some(&data),
-            args.inherit_stdout,
-            args.inherit_stderr,
-        )?;
+        let output = quickjs.try_execute(&script, Some(&data))?;
         println!("{i} {}", output.unwrap_or_else(|| "None".to_string()));
     }
 
