@@ -10,8 +10,8 @@ wasmtime = "10.0.1"
 wasmtime-wasi = "10.0.1"
 
 [dev-dependencies]
-clap = { version = "4.3.8", features = ["derive"] }
-num_cpus = "1.15.0"
+clap = { version = "4.3.10", features = ["derive"] }
+num_cpus = "1.16.0"
 rayon = "1.7.0"
 criterion = "0.5.1"
 
