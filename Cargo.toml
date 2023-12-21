@@ -3,7 +3,12 @@ members = [
     "crates/quickjs",
     "crates/quickjs-wasm",
 ]
+resolver = "2"
+
+[workspace.dependencies]
+anyhow = "1.0.75"
 
 [profile.release]
+codegen-units = 1
 lto = true
 opt-level = 3
