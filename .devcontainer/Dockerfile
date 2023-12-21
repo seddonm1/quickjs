@@ -1,4 +1,4 @@
-FROM rust:1.70.0
+FROM rust:1.74.1
 
 ENV QUICKJS_WASM_SYS_WASI_SDK_PATH=/opt/wasi-sdk
 

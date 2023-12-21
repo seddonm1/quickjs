@@ -122,10 +122,10 @@ impl QuickJS {
 
         let mut wasi_ctx_builder = WasiCtxBuilder::new();
         if self.inherit_stdout {
-            wasi_ctx_builder = wasi_ctx_builder.inherit_stdout();
+            wasi_ctx_builder.inherit_stdout();
         };
         if self.inherit_stderr {
-            wasi_ctx_builder = wasi_ctx_builder.inherit_stderr();
+            wasi_ctx_builder.inherit_stderr();
         };
 
         let wasi = wasi_ctx_builder.build();
@@ -298,7 +298,7 @@ mod tests {
 
     #[test]
     fn try_execute_memory_limit_normal() {
-        let quickjs = QuickJS::try_new(None, false, false, Some(2097152), None).unwrap();
+        let quickjs = QuickJS::try_new(None, false, false, Some(4194304), None).unwrap();
 
         let script = r#"
             'quickjs' + 'wasm'
@@ -311,7 +311,7 @@ mod tests {
 
     #[test]
     fn try_execute_memory_limit_exceed() {
-        let quickjs = QuickJS::try_new(None, false, false, Some(2097152), None).unwrap();
+        let quickjs = QuickJS::try_new(None, false, false, Some(4194304), None).unwrap();
 
         let script = r#"
             let memory = [];

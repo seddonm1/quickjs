@@ -1,18 +1,18 @@
 [package]
 name = "quickjs"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.71"
-wasi-common = "10.0.1"
-wasmtime = "10.0.1"
-wasmtime-wasi = "10.0.1"
+anyhow = { workspace = true }
+wasi-common = "16.0.0"
+wasmtime = "16.0.0"
+wasmtime-wasi = "16.0.0"
 
 [dev-dependencies]
-clap = { version = "4.3.10", features = ["derive"] }
+clap = { version = "4.4.11", features = ["derive"] }
 num_cpus = "1.16.0"
-rayon = "1.7.0"
+rayon = "1.8.0"
 criterion = "0.5.1"
 
 [[bench]]
