@@ -1,5 +1,5 @@
 use anyhow::Result;
-use quickjs_wasm_rs::{CallbackArg, JSContextRef, JSValue};
+use quickjs_wasm_rs::{JSContextRef, JSValue, JSValueRef};
 use std::io::Write;
 
 /// set quickjs globals
@@ -21,11 +21,11 @@ pub fn set_quickjs_globals(context: &JSContextRef) -> anyhow::Result<()> {
 /// log to the stdout and stderr respectively.
 fn console_log_to<T>(
     mut stream: T,
-) -> impl FnMut(&JSContextRef, &CallbackArg, &[CallbackArg]) -> Result<JSValue>
+) -> impl FnMut(&JSContextRef, JSValueRef, &[JSValueRef]) -> Result<JSValue>
 where
     T: Write + 'static,
 {
-    move |_ctx: &JSContextRef, _this: &CallbackArg, args: &[CallbackArg]| {
+    move |_ctx: &JSContextRef, _this: JSValueRef, args: &[JSValueRef]| {
         // Write full string to in-memory destination before writing to stream since each write call to the stream
         // will invoke a hostcall.
         let mut log_line = String::new();

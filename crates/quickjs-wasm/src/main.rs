@@ -8,6 +8,7 @@ use quickjs_wasm_rs::JSContextRef;
 
 static mut JS_CONTEXT: OnceCell<JSContextRef> = OnceCell::new();
 static SCRIPT_NAME: &str = "script.js";
+static DEPENDENCIES: &str = include_str!("../dependencies/index.js");
 
 /// init() is executed by wizer to create a snapshot after the quickjs context has been initialized.
 ///
@@ -17,6 +18,9 @@ static SCRIPT_NAME: &str = "script.js";
 pub extern "C" fn init() {
     unsafe {
         let context = JSContextRef::default();
+
+        // add any init code
+        context.eval_global(SCRIPT_NAME, DEPENDENCIES).unwrap();
 
         // add globals to the quickjs instance if enabled
         #[cfg(feature = "console")]
