@@ -1,4 +1,4 @@
-FROM rust:1.74.1
+FROM rust:1.75.0
 
 ENV QUICKJS_WASM_SYS_WASI_SDK_PATH=/opt/wasi-sdk
 
@@ -11,7 +11,7 @@ RUN rustup component add rustfmt &&\
     cargo install wizer --features="env_logger structopt"
 
 RUN cd /tmp &&\
-    wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-20/wasi-sdk-20.0-linux.tar.gz &&\
+    wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-21/wasi-sdk-21.0-linux.tar.gz &&\
     mkdir -p $QUICKJS_WASM_SYS_WASI_SDK_PATH  &&\
-    tar xvf wasi-sdk-20.0-linux.tar.gz --strip-components=1 -C $QUICKJS_WASM_SYS_WASI_SDK_PATH &&\
-    rm wasi-sdk-20.0-linux.tar.gz
+    tar xvf wasi-sdk-21.0-linux.tar.gz --strip-components=1 -C $QUICKJS_WASM_SYS_WASI_SDK_PATH &&\
+    rm wasi-sdk-21.0-linux.tar.gz
