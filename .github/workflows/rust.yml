@@ -61,7 +61,7 @@ jobs:
       - name: Run clippy
         run: |
           cargo clippy --all-targets --workspace -- -D warnings
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v5
         with:
           name: quickjs.wasm
           path: ./quickjs.wasm
