@@ -17,16 +17,16 @@ jobs:
         # "1" means line tables only, which is useful for panic tracebacks.
         RUSTFLAGS: "-C debuginfo=1"
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v5
         with:
           submodules: true
       - name: Cache Cargo
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: /home/runner/.cargo
           key: cargo-cache-
       - name: Cache Rust dependencies
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: /home/runner/target
           key: target-cache-
@@ -69,7 +69,7 @@ jobs:
     name: Rust formatting
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v5
       - name: Setup toolchain
         run: |
           rustup toolchain install stable
