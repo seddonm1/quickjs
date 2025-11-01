@@ -1,46 +1,65 @@
-#[cfg(feature = "console")]
-mod context;
+#![allow(static_mut_refs)]
+
 mod io;
 
 use anyhow::Result;
-use once_cell::sync::OnceCell;
-use quickjs_wasm_rs::JSContextRef;
+use rquickjs::{Context, Runtime, Value};
+use std::mem::MaybeUninit;
 
-static mut JS_CONTEXT: OnceCell<JSContextRef> = OnceCell::new();
-static SCRIPT_NAME: &str = "script.js";
 static DEPENDENCIES: &str = include_str!("../dependencies/index.js");
 
-/// init() is executed by wizer to create a snapshot after the quickjs context has been initialized.
-///
-/// it also binds the console.log and console.error functions so they can be used for debugging in the
-/// user script.
-#[export_name = "wizer.initialize"]
+struct RuntimeContext {
+    // We don't need to store the Runtime separately if we use Context::full,
+    // as the context will keep the runtime alive. However, it's good practice
+    // to keep it explicitly to show ownership.
+    #[allow(dead_code)]
+    rt: Runtime,
+    ctx: Context,
+}
+
+// 1. Use `static mut` with `MaybeUninit`.
+// This allocates the memory for our RuntimeContext in the static data section of the binary.
+// Wizer will save the state of this memory in its snapshot.
+static mut RUNTIME: MaybeUninit<RuntimeContext> = MaybeUninit::uninit();
+
+/// init() is executed by Wizer to create a snapshot after the QuickJS context has been initialized.
+#[unsafe(export_name = "wizer.initialize")]
 pub extern "C" fn init() {
+    // Creating the runtime and context is safe.
+    let rt = Runtime::new().unwrap();
+    let ctx = Context::full(&rt).unwrap();
+
+    ctx.with(|ctx| {
+        // Pre-evaluate any expensive setup scripts.
+        ctx.eval::<Value, _>(DEPENDENCIES).unwrap();
+    });
+
+    // 2. Write the initialized context into our static memory location.
+    // This needs to be in an `unsafe` block because we are writing to a `static mut`.
+    // The `write` method moves the `RuntimeContext` into the static variable,
+    // ensuring it's not dropped at the end of this function.
     unsafe {
-        let context = JSContextRef::default();
-
-        // add any init code
-        context.eval_global(SCRIPT_NAME, DEPENDENCIES).unwrap();
-
-        // add globals to the quickjs instance if enabled
-        #[cfg(feature = "console")]
-        context::set_quickjs_globals(&context).unwrap();
-
-        JS_CONTEXT.set(context).unwrap();
+        RUNTIME.write(RuntimeContext { rt, ctx });
     }
 }
 
 fn main() -> Result<()> {
     match io::get_input_script()? {
         Some(input) => {
-            let context = unsafe { JS_CONTEXT.get_or_init(JSContextRef::default) };
+            // 3. Get a mutable reference to our Wizer-initialized runtime.
+            // This is `unsafe` because the compiler can't prove that `init` was called.
+            // With Wizer, we know it has been.
+            let rt_ctx = unsafe { RUNTIME.assume_init_mut() };
 
-            if let Some(value) = io::get_input_data(context)? {
-                context.global_object()?.set_property("data", value)?;
-            }
-
-            io::set_output_value(context.eval_global(SCRIPT_NAME, &input).map(Some))
+            // 4. Use the existing context instead of creating a new one.
+            rt_ctx.ctx.with(|ctx| {
+                match ctx.eval::<Value, _>(input.as_bytes()) {
+                    Ok(res) => io::set_output_value(&ctx, res)?,
+                    Err(_) => io::set_output_error(ctx.catch())?,
+                };
+                Ok(())
+            })
         }
-        None => io::set_output_value(Ok(None)),
+        None => Ok(io::set_output_none()?),
     }
 }

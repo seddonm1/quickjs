@@ -205,20 +205,12 @@ impl QuickJS {
     /// # Returns
     ///
     /// If execution is successful, it returns `Some(String)` with the output  or None if no output is returned from the JavaScript context.
-    pub fn try_execute(&self, script: &str, data: Option<&str>) -> Result<Option<String>> {
+    pub fn try_execute(&self, script: &str) -> Result<Option<String>> {
         // Convert the script string to a byte vector for later use
         let script = script.as_bytes().to_vec();
 
         // Get the size of the script as an i32 (for WASI API calls)
         let script_size = script.len() as i32;
-
-        // Optionally convert the data string to a byte vector and set its default value if it's not provided
-        let data = data
-            .map(|data| data.as_bytes().to_vec())
-            .unwrap_or_default();
-
-        // Get the size of the data as an i32 (for WASI API calls)
-        let data_size = data.len() as i32;
 
         // Create a new linker for the engine
         let mut linker = Linker::new(&self.engine);
@@ -253,10 +245,7 @@ impl QuickJS {
                     .build(),
             ),
             // If self.memory_limit is None, use default values for memory type and limits.
-            None => (
-                MemoryType::new(1, None),
-                StoreLimitsBuilder::new().instances(1).build(),
-            ),
+            None => (MemoryType::new(1, None), StoreLimitsBuilder::new().instances(1).build()),
         };
 
         // Create a new store instance with the engine and initial state.
@@ -278,9 +267,8 @@ impl QuickJS {
             });
 
             // Calculate initial epoch limit from time limit.
-            let mut epoch_limit = u32::try_from(
-                time_limit.limit.as_micros() / time_limit.evaluation_interval.as_micros(),
-            )?;
+            let mut epoch_limit =
+                u32::try_from(time_limit.limit.as_micros() / time_limit.evaluation_interval.as_micros())?;
 
             // Set up callback for when the epoch deadline is reached.
             store.epoch_deadline_callback(move |_| {
@@ -302,11 +290,9 @@ impl QuickJS {
 
         // Wraps the host function to retrieve the size of the script.
         // This function is exposed as `get_script_size` in the JavaScript context.
-        linker.func_wrap(
-            "host",
-            "get_script_size",
-            move |_: Caller<'_, State>| -> Result<i32> { Ok(script_size) },
-        )?;
+        linker.func_wrap("host", "get_script_size", move |_: Caller<'_, State>| -> Result<i32> {
+            Ok(script_size)
+        })?;
 
         // Wraps the host function to retrieve the script data.
         // This function is exposed as `get_script` in the JavaScript context.
@@ -327,33 +313,6 @@ impl QuickJS {
             },
         )?;
 
-        // Wraps the host function to retrieve the size of the input data.
-        // This function is exposed as `get_data_size` in the JavaScript context.
-        linker.func_wrap(
-            "host",
-            "get_data_size",
-            move |_: Caller<'_, State>| -> Result<i32> { Ok(data_size) },
-        )?;
-
-        // Wraps the host function to retrieve the input data.
-        // This function is exposed as `get_data` in the JavaScript context.
-        linker.func_wrap(
-            "host",
-            "get_data",
-            move |mut caller: Caller<'_, State>, ptr: i32| -> Result<()> {
-                // The memory export from the host environment.
-                let memory = match caller.get_export("memory") {
-                    Some(Extern::Memory(memory)) => memory,
-                    _ => return Err(anyhow!("failed to find host memory")),
-                };
-
-                // The offset in bytes at which to write the input data.
-                let offset = ptr as u32 as usize;
-
-                Ok(memory.write(&mut caller, offset, &data)?)
-            },
-        )?;
-
         // A simulated one-shot channel to wait for the script to complete and retrieve the result.
         let (sender, receiver) = sync_channel(1);
 
@@ -362,11 +321,7 @@ impl QuickJS {
         linker.func_wrap(
             "host",
             "set_output",
-            move |mut caller: Caller<'_, State>,
-                  ptr: i32,
-                  capacity: i32,
-                  error: i32|
-                  -> Result<()> {
+            move |mut caller: Caller<'_, State>, ptr: i32, capacity: i32, error: i32| -> Result<()> {
                 // Check for invalid capacity
                 if capacity == 0 {
                     // If the capacity is zero, send None to the guest.
@@ -422,46 +377,31 @@ mod tests {
 
     #[test]
     fn try_execute() -> Result<()> {
-        let quickjs = QuickJSBuilder::new().build()?;
+        let quickjs = QuickJSBuilder::new().with_inherit_stdout(true).build()?;
 
         let script = r#"
             'quickjs' + 'wasm'
         "#;
 
-        let result = quickjs.try_execute(script, None).unwrap();
+        let result = quickjs.try_execute(script).unwrap().unwrap();
 
-        assert_eq!(result, Some("\"quickjswasm\"".to_string()));
-
-        Ok(())
-    }
-
-    #[test]
-    fn try_execute_data() -> Result<()> {
-        let quickjs = QuickJSBuilder::new().build()?;
-
-        let script = r#"
-            'quickjs' + data.input
-        "#;
-
-        let data = r#"{"input": "wasm"}"#;
-
-        let result = quickjs.try_execute(script, Some(data)).unwrap();
-
-        assert_eq!(result, Some("\"quickjswasm\"".to_string()));
+        assert_eq!(result, "quickjswasm");
 
         Ok(())
     }
 
     #[test]
     fn try_throw_error() -> Result<()> {
-        let quickjs = QuickJSBuilder::new().build()?;
+        let quickjs = QuickJSBuilder::new().with_inherit_stdout(true).build()?;
 
         let script = r#"
             throw new Error('myerror');
         "#;
 
-        match quickjs.try_execute(script, None) {
-            Err(err) if err.to_string().contains("Uncaught Error: myerror") => {}
+        match quickjs.try_execute(script) {
+            Err(err) => {
+                assert_eq!(err.to_string(), "myerror");
+            }
             other => panic!("{:?}", other),
         }
 
@@ -476,9 +416,9 @@ mod tests {
             'quickjs' + 'wasm'
         "#;
 
-        let result = quickjs.try_execute(script, None).unwrap();
+        let result = quickjs.try_execute(script).unwrap();
 
-        assert_eq!(result, Some("\"quickjswasm\"".to_string()));
+        assert_eq!(result, Some("quickjswasm".to_string()));
 
         Ok(())
     }
@@ -494,7 +434,7 @@ mod tests {
             }
         "#;
 
-        match quickjs.try_execute(script, None) {
+        match quickjs.try_execute(script) {
             Err(err) if err.to_string().contains("out of memory") => {}
             other => panic!("{:?}", other),
         }
@@ -506,8 +446,7 @@ mod tests {
     fn try_execute_time_limit() -> Result<()> {
         let quickjs = QuickJSBuilder::new()
             .with_time_limit(
-                TimeLimit::new(Duration::from_secs(2))
-                    .with_evaluation_interval(Duration::from_millis(100)),
+                TimeLimit::new(Duration::from_secs(2)).with_evaluation_interval(Duration::from_millis(100)),
             )
             .build()?;
 
@@ -522,7 +461,7 @@ mod tests {
             sleep(30000);
         "#;
 
-        match quickjs.try_execute(script, None) {
+        match quickjs.try_execute(script) {
             Err(err) if err.root_cause().to_string().contains("exceeds time limit") => {}
             other => panic!("{:?}", other),
         }

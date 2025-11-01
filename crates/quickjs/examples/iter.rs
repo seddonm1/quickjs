@@ -66,12 +66,15 @@ fn main() -> Result<()> {
         }),
     )?;
 
-    let script = std::fs::read_to_string(args.script)?;
-    let data = std::fs::read_to_string(args.data)?;
+    let script = format!(
+        "const data={};\n{}",
+        std::fs::read_to_string(args.data)?,
+        std::fs::read_to_string(args.script)?
+    );
 
     let start = Instant::now();
     for i in 0..args.iterations {
-        let output = quickjs.try_execute(&script, Some(&data))?;
+        let output = quickjs.try_execute(&script)?;
         println!("{i} {}", output.unwrap_or_else(|| "None".to_string()));
     }
 

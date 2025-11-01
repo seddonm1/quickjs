@@ -1,35 +1,42 @@
-use anyhow::Result;
-use quickjs_wasm_rs::{Deserializer, JSContextRef, JSValueRef, Serializer};
+use rquickjs::{Ctx, Function, Object, Result, Type, Value};
 
 #[link(wasm_import_module = "host")]
-extern "C" {
-    fn get_script(ptr: i32);
-    fn get_script_size() -> i32;
-    fn get_data(ptr: i32);
-    fn get_data_size() -> i32;
-    fn set_output(ptr: i32, size: i32, error: i32);
+unsafe extern "C" {
+    unsafe fn get_script(ptr: i32);
+    unsafe fn get_script_size() -> i32;
+    unsafe fn set_output(ptr: i32, size: i32, error: i32);
 }
 
-/// Transcodes a byte slice containing a JSON encoded payload into a [`JSValueRef`].
+/// Converts a QuickJS Value to a user-facing Rust String.
+/// NOTE: This function must be called from within a `ctx.with(...)` block.
 ///
-/// Arguments:
-/// * `context` - A reference to the [`JSContextRef`] that will contain the
-///   returned [`JSValueRef`].
-/// * `bytes` - A byte slice containing a JSON encoded payload.
-pub fn transcode_input<'a>(context: &'a JSContextRef, bytes: &[u8]) -> Result<JSValueRef<'a>> {
-    let mut deserializer = serde_json::Deserializer::from_slice(bytes);
-    let mut serializer = Serializer::from_context(context)?;
-    serde_transcode::transcode(&mut deserializer, &mut serializer)?;
-    Ok(serializer.value)
-}
-
-/// Transcodes a [`JSValueRef`] into a JSON encoded byte vector.
-pub fn transcode_output(val: JSValueRef) -> Result<Vec<u8>> {
-    let mut output = Vec::new();
-    let mut deserializer = Deserializer::from(val);
-    let mut serializer = serde_json::Serializer::new(&mut output);
-    serde_transcode::transcode(&mut deserializer, &mut serializer)?;
-    Ok(output)
+// FIX: The function must accept the active context `Ctx<'js>`, not the owner `&Context`.
+pub fn value_to_string<'js>(ctx: &Ctx<'js>, value: &Value<'js>) -> Result<String> {
+    // We can now use `ctx` directly, as it is the active context handle.
+    match value.type_of() {
+        Type::String => value.get::<rquickjs::String>()?.to_string(),
+        Type::Bool | Type::Int | Type::Float | Type::BigInt | Type::Symbol | Type::Function | Type::Constructor => {
+            let globals = ctx.globals();
+            let string_fn: Function = globals.get("String")?;
+            string_fn.call::<_, String>((value.clone(),))
+        }
+        Type::Null => Ok("null".to_string()),
+        Type::Undefined => Ok("undefined".to_string()),
+        Type::Object | Type::Array => {
+            let globals = ctx.globals();
+            let json: Object = globals.get("JSON")?;
+            let stringify: Function = json.get("stringify")?;
+            stringify.call::<_, String>((value.clone(),))
+        }
+        Type::Exception => {
+            let exc = value.as_exception().unwrap();
+            Ok(format!("{}", exc))
+        }
+        Type::Uninitialized => Ok("[uninitialized]".to_string()),
+        Type::Module => Ok("[module]".to_string()),
+        Type::Unknown => Ok("[unknown]".to_string()),
+        Type::Promise => Ok("[promise]".to_string()),
+    }
 }
 
 /// gets the script from the host as a string
@@ -49,50 +56,34 @@ pub fn get_input_script() -> Result<Option<String>> {
     }
 }
 
-/// gets the data from the host as a JSValueRef
-pub fn get_input_data(context: &JSContextRef) -> Result<Option<JSValueRef>> {
-    let input_size = unsafe { get_data_size() } as usize;
+/// sets the output value on the host
+pub fn set_output_none() -> Result<()> {
+    unsafe { set_output(0, 0, 0) }
 
-    if input_size == 0 {
-        Ok(None)
-    } else {
-        let mut buf: Vec<u8> = Vec::with_capacity(input_size);
-        let ptr = buf.as_mut_ptr();
-        unsafe { get_data(ptr as i32) };
-
-        let input_buf = unsafe { Vec::from_raw_parts(ptr, input_size, input_size) };
-
-        Ok(Some(transcode_input(context, &input_buf)?))
-    }
+    Ok(())
 }
 
 /// sets the output value on the host
-pub fn set_output_value(output: Result<Option<JSValueRef>>) -> Result<()> {
-    match output {
-        Ok(None) => unsafe {
-            set_output(0, 0, 0);
-        },
-        Ok(Some(output)) => {
-            let output = transcode_output(output)?;
+pub fn set_output_value<'js>(ctx: &Ctx<'js>, output: Value<'js>) -> Result<()> {
+    let output = value_to_string(ctx, &output).inspect_err(|err| println!("{err:?}"))?;
+    let size = output.len() as i32;
+    let ptr = output.as_ptr();
 
-            let size = output.len() as i32;
-            let ptr = output.as_ptr();
+    unsafe { set_output(ptr as i32, size, 0) };
 
-            unsafe {
-                set_output(ptr as i32, size, 0);
-            }
-        }
-        Err(err) => {
-            let err = err.to_string();
+    Ok(())
+}
 
-            let output = err.as_bytes();
-            let size = output.len() as i32;
-            let ptr = output.as_ptr();
+/// sets the output value on the host as error
+pub fn set_output_error(error: Value) -> Result<()> {
+    let err = error.as_exception().unwrap().message().unwrap();
+    let output = err.as_bytes();
+    let size = output.len() as i32;
+    let ptr = output.as_ptr();
 
-            unsafe {
-                set_output(ptr as i32, size, 1);
-            };
-        }
+    unsafe {
+        set_output(ptr as i32, size, 1);
     }
+
     Ok(())
 }

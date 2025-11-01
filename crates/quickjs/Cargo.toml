@@ -1,19 +1,19 @@
 [package]
 name = "quickjs"
-version = "0.6.0"
-edition = "2021"
+version = "0.7.0"
+edition = "2024"
 
 [dependencies]
 anyhow = { workspace = true }
-wasi-common = "23.0.1"
-wasmtime = "23.0.1"
-wasmtime-wasi = "23.0.1"
+wasi-common = "38.0.3"
+wasmtime = "38.0.3"
+wasmtime-wasi = "38.0.3"
 
 [dev-dependencies]
-clap = { version = "4.5.11", features = ["derive"] }
-num_cpus = "1.16.0"
-rayon = "1.10.0"
-criterion = "0.5.1"
+clap = { version = "4.5.51", features = ["derive"] }
+num_cpus = "1.17.0"
+rayon = "1.11.0"
+criterion = "0.7.0"
 
 [[bench]]
 name = "benchmark"
